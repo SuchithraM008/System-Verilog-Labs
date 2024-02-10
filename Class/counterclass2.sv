@@ -1,143 +1,182 @@
 ///////////////////////////////////////////////////////////////////////////
 // (c) Copyright 2013 Cadence Design Systems, Inc. All Rights Reserved.
 //
-// File name   : counter.sv
-// Title       : Simple class
+// File name   : 07_aggreate.sv
+// Title       : Aggregate class
 // Project     : SystemVerilog Training
 // Created     : 2013-4-8
-// Description : Simple counter class
+// Description : Upcounter instances used in aggregate class
 // Notes       :
 // 
 ///////////////////////////////////////////////////////////////////////////
 
-module counterclass;
 
-// add counter class here    
+module counterclass7;
+    
+ class counter;
+  int count;
+  int max, min;
+  
+  function new(input int start, upper, lower);
+    check_limits(upper, lower);
+    check_set(start);
+  endfunction
 
-class counter;
+  function void check_limits (input int upper, lower);
+    if (lower > upper) begin
+      $display("lower bound %0d > upper bound %0d - bounds swapped", lower, upper);
+      max = lower;
+      min = upper;
+      end
+    else begin
+      max = upper;
+      min = lower;
+    end
+  endfunction
 
-int count;
-int max;
-int min;
+  function void check_set(input int set);
+    if ((set < min) || (set > max))
+      begin
+      $display("count set value %0d outside bounds %0d to %0d - set to min", set, min, max);
+      count = min;
+      end
+    else
+      count = set;
+  endfunction
+  
+  function int getcount();
+    return (count);
+  endfunction
 
-function void check_limit(input int a,b);
-if(a>b)begin
- max = a;
- min = b;
-end
-else begin
- max = b;
- min = a;
-end
-endfunction
-
-function void check_set(input int set);
-if(set > min && set < max )begin
-count = set;
-end
-else begin
-count = min;
-$display("WARNING");
-end
-endfunction
-
-function new(input int start,max_limit,min_limit);
-	count = start;
-	max = max_limit;
-	min = min_limit;
-	check_limit(max,min);
-	check_set(count);
-endfunction
-
-function void load(input int i);
-	count = i;
-	check_set(count);
-endfunction
-
-function int getcount();
-	return count;
-endfunction
+  function void load(input int value);
+    check_set(value);
+  endfunction
 
 endclass
 
-class uppercounter extends counter;
+class upcounter extends counter;
 
-bit carry;
+  logic carry;
 
-function new(input int start,max_limit,min_limit,bit carry);
-	super.new(start,max_limit,min_limit);
-	carry = 0;
-endfunction
 
-function void next();
-	if(count<max) begin
-	count =  count+1;
-	carry = 0;
-	$display("upper count %0d", count);
-	$display("upper carry %0d", carry);
-	end
-	else begin
-	count = min;
-	carry = 1;
-	$display("upper count %0d", count);
-	$display("upper carry %0d", carry);
-	end
-endfunction
 
-endclass
+  function new(input int start, upper, lower);
+    super.new(start, upper, lower);
+   
+  endfunction
 
-class lowercounter extends counter;
-
-bit borrow;
-
-function new(input int start,max_limit,min_limit,bit borrow);
-	super.new(start,max_limit,min_limit);
-	borrow = 0;
-endfunction
-
-function void next();
-	if(count>min) begin
-	count = count-1;
-	borrow = 0;
-	$display("borrow %0d", borrow);
-	$display("lower count %0d", count);
-	end
-	else begin
-	count = max;
-	borrow = 1;
-	$display("borrow %0d", borrow);
-	$display("lower count %0d", count);
-	end
-endfunction
+  function void next();
+    if (count == max) begin
+      carry = 1;
+      count = min;
+    end
+    else begin
+      carry = 0;
+      count++;
+    end
+    //$display("upcounter next %0d %0d", count, carry);
+  endfunction
 
 
 
 endclass
 
+class downcounter extends counter;
 
+  logic borrow;
 
-int countval;
-uppercounter u1 = new(9,10,0,0);
-lowercounter lower = new(0,10,0,0);
+  static int no_down;
 
-initial begin
+  function new(input int start, upper, lower);
+    super.new(start, upper, lower);
+    no_down++;
+  endfunction
 
+  function void next();
+    if (count == min) begin
+      borrow = 1;
+      count = max;
+    end
+    else begin
+      borrow = 0;
+      count--;
+    end
+    $display("downcounter next %0d %0d", count, borrow);
+   endfunction
 
-countval = u1.getcount();
-$display("get count %0d", countval);
-u1.next();
+  static function int number_of();
+    return (no_down);
+  endfunction
+   
+endclass   
 
+class timer;
 
-countval = lower.getcount();
-$display("get count %0d", countval);
+  upcounter hours,minutes,seconds;
 
-lower.next();
+  function new(input int unsigned hr=0, min=0, sec=0);
+    hours   = new(hr,23,0);
+    minutes = new(min,59,0);
+    seconds = new(sec,59,0);
+  endfunction
 
+  function void load(input int unsigned hr, min, sec);
+    hours.load(hr);
+    minutes.load(min);
+    seconds.load(sec);
+  endfunction
 
-lower.next();
+  function void showval();
+    $display("Timer display is %2d:%2d:%2d", hours.count, minutes.count, seconds.count);
+  endfunction
 
+  function void next();
+    seconds.next();
+    if (seconds.carry == 1) begin
+      minutes.next();
+      if (minutes.carry == 1)
+        hours.next();
+    end
+  
+  endfunction
+  
 
+ 
+endclass
 
-end
+timer t1;
+ 
+ 
+       
+  // Stimulus and response
+  initial
+    begin
+    
+      t1 = new();
+      t1.showval();
+      $display("Loading timer with 00:00:59");
+      t1.load(0,0,59);
+      t1.showval();
+     
+      $display("Incrementing timer from 00:00:59");
+      t1.next();
+      t1.showval();
+      $display("Loading timer with 00:59:59");
+      t1.load(0,59,59);
+      t1.showval();
+      
+      $display("Incrementing timer from 00:59:59");
+      t1.next();
+      t1.showval();
+      $display("Loading timer with 23:59:59");
+      t1.load(23,59,59);
+      t1.showval();
+     
+      $display("Incrementing timer from 23:59:59");
+      t1.next();
+      t1.showval();
+      
+      $finish(0);
+    end
 
 endmodule
